@@ -44,13 +44,15 @@ Este projeto implementa um feed social similar ao Instagram utilizando Kafka par
   - Gerenciamento de usuários
   - Seguir/deixar de seguir
   - Perfis e configurações
+  - Referências para avatares (media_file_id)
 
 #### Post Service
-- **Banco**: PostgreSQL + S3/MinIO (imagens)
+- **Banco**: PostgreSQL
 - **Funcionalidades**:
   - CRUD de posts
-  - Upload e processamento de imagens
   - Metadados dos posts
+  - Referências para imagens (media_file_id do Media Service)
+- **Integração**: Comunica com Media Service via eventos Kafka para associar mídias aos posts
 
 #### Timeline Service
 - **Cache**: Redis
@@ -58,6 +60,16 @@ Este projeto implementa um feed social similar ao Instagram utilizando Kafka par
   - Geração de timeline personalizada
   - Cache de feeds por usuário
   - Paginação otimizada
+
+#### Media Service
+- **Storage**: S3/MinIO
+- **Banco**: PostgreSQL (metadados)
+- **Funcionalidades**:
+  - Upload de imagens (avatares, posts)
+  - Processamento de imagens (resize, compress)
+  - CDN URLs e metadados
+  - Controle de acesso
+- **Integração**: Notifica Post/User Service via `media-events` quando upload é concluído
 
 #### Notification Service
 - **Funcionalidades**:
@@ -74,12 +86,14 @@ post-events        # Eventos de posts (criação, edição, exclusão)
 interaction-events # Eventos de interação (likes, comentários)
 timeline-events    # Eventos para atualização de timeline
 notification-events # Eventos para notificações
+media-events       # Eventos de upload/processamento de imagens
 ```
 
 #### Fluxo de Eventos:
 1. **Post Criado**: Post Service → `post-events` → Timeline Service (atualiza feeds)
 2. **Like Dado**: Post Service → `interaction-events` → Notification Service
 3. **Novo Seguidor**: User Service → `user-events` → Timeline Service (reconstrói timeline)
+4. **Upload Imagem**: Media Service → `media-events` → Post/User Service (atualiza referência)
 
 ## Casos de Uso com Kafka
 
@@ -91,7 +105,17 @@ notification-events # Eventos para notificações
 4. Notification Service notifica seguidores sobre novo post
 ```
 
-### 2. Sistema de Likes
+### 2. Upload de Imagem para Post
+```
+1. Usuário seleciona imagem no frontend
+2. Frontend → Media Service (upload direto)
+3. Media Service processa e armazena imagem
+4. Media Service publica "media-uploaded" no Kafka com media_id
+5. Post Service consome evento e associa media_id ao post
+6. Post Service publica "post-created" para atualizar timelines
+```
+
+### 3. Sistema de Likes
 ```
 1. Usuário curte post
 2. API Gateway → Post Service (processa like)
@@ -100,7 +124,7 @@ notification-events # Eventos para notificações
 5. Timeline Service consome evento e pode reordenar feeds baseado em engajamento
 ```
 
-### 3. Timeline em Tempo Real
+### 4. Timeline em Tempo Real
 ```
 1. Timeline Service mantém cache Redis com feeds pré-computados
 2. Eventos do Kafka atualizam caches automaticamente

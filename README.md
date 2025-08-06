@@ -18,7 +18,8 @@ React App ←→ API Gateway ←→ Microserviços
 
 ### Microserviços Planejados
 - **User Service** - Gestão de usuários e relacionamentos
-- **Post Service** - CRUD de posts e upload de imagens  
+- **Post Service** - CRUD de posts e metadados  
+- **Media Service** - Upload, processamento e armazenamento de imagens
 - **Timeline Service** - Feeds personalizados com cache Redis
 - **Notification Service** - Notificações em tempo real
 
@@ -28,6 +29,7 @@ React App ←→ API Gateway ←→ Microserviços
 - `interaction-events` - Likes, comentários
 - `timeline-events` - Atualizações de feed
 - `notification-events` - Sistema de notificações
+- `media-events` - Upload e processamento de imagens
 
 ## 🚀 Quick Start
 

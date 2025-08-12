@@ -1,4 +1,5 @@
 import { Kafka } from "kafkajs";
+import { v4 as uuidv4 } from "uuid";
 
 const kafka = new Kafka({
   clientId: "post-service",
@@ -59,6 +60,24 @@ class KafkaProducer {
           configEntries: [
             { name: "cleanup.policy", value: "delete" },
             { name: "retention.ms", value: "604800000" }, // 7 days
+          ],
+        },
+        {
+          topic: "post.liked",
+          numPartitions: 3,
+          replicationFactor: 1,
+          configEntries: [
+            { name: "cleanup.policy", value: "delete" },
+            { name: "retention.ms", value: "259200000" }, // 3 days
+          ],
+        },
+        {
+          topic: "post.unliked",
+          numPartitions: 3,
+          replicationFactor: 1,
+          configEntries: [
+            { name: "cleanup.policy", value: "delete" },
+            { name: "retention.ms", value: "259200000" }, // 3 days
           ],
         },
       ];
@@ -133,11 +152,69 @@ class KafkaProducer {
   }
 
   async publishPostLiked(postData, userId) {
-    return this.publishPostEvent("POST_LIKED", postData, userId);
+    if (!this.isConnected) {
+      await this.connect();
+    }
+
+    const eventId = uuidv4();
+    const message = {
+      topic: "post.liked",
+      messages: [
+        {
+          key: `${postData.id}-${userId}`,
+          value: JSON.stringify({
+            event_id: eventId,
+            post: postData,
+            user_id: userId,
+            timestamp: new Date().toISOString(),
+            version: "1.0",
+          }),
+          timestamp: Date.now().toString(),
+        },
+      ],
+    };
+
+    try {
+      const result = await producer.send(message);
+      console.log(`Published post.liked event ${eventId} for post ${postData.id}:`, result);
+      return result;
+    } catch (error) {
+      console.error("Error publishing post.liked event:", error);
+      throw error;
+    }
   }
 
   async publishPostUnliked(postData, userId) {
-    return this.publishPostEvent("POST_UNLIKED", postData, userId);
+    if (!this.isConnected) {
+      await this.connect();
+    }
+
+    const eventId = uuidv4();
+    const message = {
+      topic: "post.unliked",
+      messages: [
+        {
+          key: `${postData.id}-${userId}`,
+          value: JSON.stringify({
+            event_id: eventId,
+            post: postData,
+            user_id: userId,
+            timestamp: new Date().toISOString(),
+            version: "1.0",
+          }),
+          timestamp: Date.now().toString(),
+        },
+      ],
+    };
+
+    try {
+      const result = await producer.send(message);
+      console.log(`Published post.unliked event ${eventId} for post ${postData.id}:`, result);
+      return result;
+    } catch (error) {
+      console.error("Error publishing post.unliked event:", error);
+      throw error;
+    }
   }
 }
 

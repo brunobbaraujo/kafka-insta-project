@@ -173,32 +173,29 @@ class PostController {
       const { postId } = req.params;
       const { user_id } = req.body;
 
-      const updatedPost = await Post.addLike(postId, user_id);
-      if (!updatedPost) {
+      // Verify post exists
+      const post = await Post.findById(postId);
+      if (!post) {
         return res.status(404).json({
           success: false,
           error: "Post not found",
         });
       }
 
-      // Publish event to Kafka
-      await kafkaProducer.publishPostLiked(updatedPost, user_id);
+      // Publish like event to Kafka for async processing
+      await kafkaProducer.publishPostLiked(post, user_id);
 
-      res.json({
+      // Return immediate response (202 Accepted for async processing)
+      res.status(202).json({
         success: true,
-        data: updatedPost,
-        message: "Post liked successfully",
+        message: "Like request received and being processed",
+        data: {
+          post_id: postId,
+          user_id: user_id,
+        },
       });
     } catch (error) {
-      console.error("Error liking post:", error);
-      
-      if (error.message === "User has already liked this post") {
-        return res.status(400).json({
-          success: false,
-          error: "User has already liked this post",
-        });
-      }
-      
+      console.error("Error processing like request:", error);
       res.status(500).json({
         success: false,
         error: "Internal server error",
@@ -211,32 +208,29 @@ class PostController {
       const { postId } = req.params;
       const { user_id } = req.body;
 
-      const updatedPost = await Post.removeLike(postId, user_id);
-      if (!updatedPost) {
+      // Verify post exists
+      const post = await Post.findById(postId);
+      if (!post) {
         return res.status(404).json({
           success: false,
           error: "Post not found",
         });
       }
 
-      // Publish event to Kafka
-      await kafkaProducer.publishPostUnliked(updatedPost, user_id);
+      // Publish unlike event to Kafka for async processing
+      await kafkaProducer.publishPostUnliked(post, user_id);
 
-      res.json({
+      // Return immediate response (202 Accepted for async processing)
+      res.status(202).json({
         success: true,
-        data: updatedPost,
-        message: "Post unliked successfully",
+        message: "Unlike request received and being processed",
+        data: {
+          post_id: postId,
+          user_id: user_id,
+        },
       });
     } catch (error) {
-      console.error("Error unliking post:", error);
-      
-      if (error.message === "User has not liked this post") {
-        return res.status(400).json({
-          success: false,
-          error: "User has not liked this post",
-        });
-      }
-      
+      console.error("Error processing unlike request:", error);
       res.status(500).json({
         success: false,
         error: "Internal server error",

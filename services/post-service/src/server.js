@@ -5,7 +5,9 @@ import helmet from "helmet";
 import morgan from "morgan";
 import { createTable } from "./models/Post.js";
 import { createTable as createPostLikeTable } from "./models/PostLike.js";
+import { createTable as createProcessedEventTable } from "./models/ProcessedEvent.js";
 import kafkaProducer from "./config/kafka.js";
+import likeConsumer from "./consumers/likeConsumer.js";
 import postRoutes from "./routes/posts.js";
 
 const app = express();
@@ -54,12 +56,20 @@ async function initialize() {
     console.log("Creating database tables...");
     await createTable();
     await createPostLikeTable();
+    await createProcessedEventTable();
     console.log("Database tables created successfully");
 
     // Connect to Kafka and create topics
     console.log("Connecting to Kafka...");
     await kafkaProducer.connect();
     await kafkaProducer.createTopics();
+    
+    // Start like consumer
+    console.log("Starting like consumer...");
+    await likeConsumer.connect();
+    await likeConsumer.subscribe();
+    likeConsumer.run(); // Run in background
+    
     console.log("Kafka initialized successfully");
   } catch (error) {
     console.error("Initialization error:", error);
@@ -71,12 +81,14 @@ async function initialize() {
 process.on("SIGTERM", async () => {
   console.log("SIGTERM received, shutting down gracefully");
   await kafkaProducer.disconnect();
+  await likeConsumer.disconnect();
   process.exit(0);
 });
 
 process.on("SIGINT", async () => {
   console.log("SIGINT received, shutting down gracefully");
   await kafkaProducer.disconnect();
+  await likeConsumer.disconnect();
   process.exit(0);
 });
 

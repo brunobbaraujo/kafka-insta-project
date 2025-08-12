@@ -284,78 +284,47 @@ describe('PostController', () => {
   });
 
   describe('likePost', () => {
-    it('should like post successfully', async () => {
+    it('should accept like request and publish event', async () => {
       const postId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '550e8400-e29b-41d4-a716-446655440000';
-      const updatedPost = { id: postId, likes_count: 6 };
+      const post = { id: postId, user_id: 'other-user', likes_count: 5 };
 
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      // Mock transaction behavior
-      mockWithTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [] }) // Check existing like - none found
-            .mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }) // Insert like
-            .mockResolvedValueOnce({ rows: [updatedPost] }) // Update post likes_count
-        };
-        return await callback(mockClient);
-      });
+      // Mock finding the post
+      mockQuery.mockResolvedValueOnce({ rows: [post] });
 
       await postController.likePost(req, res);
 
-      expect(mockWithTransaction).toHaveBeenCalled();
+      expect(mockQuery).toHaveBeenCalledWith(
+        "SELECT * FROM posts WHERE id = $1",
+        [postId]
+      );
       expect(mockKafkaProducer.publishPostLiked).toHaveBeenCalledWith(
         expect.any(Post),
         userId
       );
+      expect(res.status).toHaveBeenCalledWith(202);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        data: expect.any(Post),
-        message: 'Post liked successfully'
+        message: 'Like request received and being processed',
+        data: {
+          post_id: postId,
+          user_id: userId,
+        }
       });
     });
 
-    it('should return 400 when user already liked the post', async () => {
+    it('should return 404 when post not found for like', async () => {
       const postId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '550e8400-e29b-41d4-a716-446655440000';
 
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      // Mock transaction that throws error when like already exists
-      mockWithTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Existing like found
-        };
-        return await callback(mockClient);
-      });
-
-      await postController.likePost(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({
-        success: false,
-        error: 'User has already liked this post'
-      });
-    });
-
-    it('should return 404 when post not found for like', async () => {
-      req.params.postId = '123e4567-e89b-12d3-a456-426614174000';
-      req.body = { user_id: '550e8400-e29b-41d4-a716-446655440000' };
-      
-      // Mock transaction behavior where post is not found
-      mockWithTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [] }) // Check existing like - none found
-            .mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }) // Insert like
-            .mockResolvedValueOnce({ rows: [] }) // Update post - no post found
-        };
-        return await callback(mockClient);
-      });
+      // Mock post not found
+      mockQuery.mockResolvedValueOnce({ rows: [] });
 
       await postController.likePost(req, res);
 
@@ -365,64 +334,58 @@ describe('PostController', () => {
         error: 'Post not found'
       });
     });
+
   });
 
   describe('unlikePost', () => {
-    it('should unlike post successfully', async () => {
+    it('should accept unlike request and publish event', async () => {
       const postId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '550e8400-e29b-41d4-a716-446655440000';
-      const updatedPost = { id: postId, likes_count: 4 };
+      const post = { id: postId, user_id: 'other-user', likes_count: 4 };
 
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      // Mock transaction behavior
-      mockWithTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Existing like found
-            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Delete like
-            .mockResolvedValueOnce({ rows: [updatedPost] }) // Update post likes_count
-        };
-        return await callback(mockClient);
-      });
+      // Mock finding the post
+      mockQuery.mockResolvedValueOnce({ rows: [post] });
 
       await postController.unlikePost(req, res);
 
-      expect(mockWithTransaction).toHaveBeenCalled();
+      expect(mockQuery).toHaveBeenCalledWith(
+        "SELECT * FROM posts WHERE id = $1",
+        [postId]
+      );
       expect(mockKafkaProducer.publishPostUnliked).toHaveBeenCalledWith(
         expect.any(Post),
         userId
       );
+      expect(res.status).toHaveBeenCalledWith(202);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        data: expect.any(Post),
-        message: 'Post unliked successfully'
+        message: 'Unlike request received and being processed',
+        data: {
+          post_id: postId,
+          user_id: userId,
+        }
       });
     });
 
-    it('should return 400 when user has not liked the post', async () => {
+    it('should return 404 when post not found for unlike', async () => {
       const postId = '123e4567-e89b-12d3-a456-426614174000';
       const userId = '550e8400-e29b-41d4-a716-446655440000';
 
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      // Mock transaction that throws error when no like found
-      mockWithTransaction.mockImplementation(async (callback) => {
-        const mockClient = {
-          query: jest.fn()
-            .mockResolvedValueOnce({ rows: [] }) // No existing like found
-        };
-        return await callback(mockClient);
-      });
+      // Mock post not found
+      mockQuery.mockResolvedValueOnce({ rows: [] });
 
       await postController.unlikePost(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: 'User has not liked this post'
+        error: 'Post not found'
       });
     });
   });

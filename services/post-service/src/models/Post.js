@@ -1,4 +1,4 @@
-import { query as _query } from "../config/database.js";
+import { query as _query, withTransaction } from "../config/database.js";
 import { v4 as uuidv4 } from "uuid";
 import PostLike from "./PostLike.js";
 
@@ -141,42 +141,60 @@ class Post {
   }
 
   static async addLike(postId, userId) {
-    const existingLike = await PostLike.findByPostAndUser(postId, userId);
-    
-    if (existingLike) {
-      throw new Error("User has already liked this post");
-    }
+    return await withTransaction(async (client) => {
+      // Check if like already exists
+      const existingLikeQuery = "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2";
+      const existingLikeResult = await client.query(existingLikeQuery, [postId, userId]);
+      
+      if (existingLikeResult.rows.length > 0) {
+        throw new Error("User has already liked this post");
+      }
 
-    const like = new PostLike({ post_id: postId, user_id: userId });
-    await like.save();
+      // Create new like
+      const likeId = uuidv4();
+      const insertLikeQuery = `
+        INSERT INTO post_likes (id, post_id, user_id, created_at)
+        VALUES ($1, $2, $3, NOW())
+        RETURNING *
+      `;
+      await client.query(insertLikeQuery, [likeId, postId, userId]);
 
-    const query = `
-      UPDATE posts
-      SET likes_count = likes_count + 1, updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `;
-    const result = await _query(query, [postId]);
-    return result.rows[0] ? new Post(result.rows[0]) : null;
+      // Update post likes count
+      const updatePostQuery = `
+        UPDATE posts
+        SET likes_count = likes_count + 1, updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `;
+      const result = await client.query(updatePostQuery, [postId]);
+      return result.rows[0] ? new Post(result.rows[0]) : null;
+    });
   }
 
   static async removeLike(postId, userId) {
-    const existingLike = await PostLike.findByPostAndUser(postId, userId);
-    
-    if (!existingLike) {
-      throw new Error("User has not liked this post");
-    }
+    return await withTransaction(async (client) => {
+      // Check if like exists
+      const existingLikeQuery = "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2";
+      const existingLikeResult = await client.query(existingLikeQuery, [postId, userId]);
+      
+      if (existingLikeResult.rows.length === 0) {
+        throw new Error("User has not liked this post");
+      }
 
-    await PostLike.deleteByPostAndUser(postId, userId);
+      // Delete the like
+      const deleteLikeQuery = "DELETE FROM post_likes WHERE post_id = $1 AND user_id = $2";
+      await client.query(deleteLikeQuery, [postId, userId]);
 
-    const query = `
-      UPDATE posts
-      SET likes_count = GREATEST(likes_count - 1, 0), updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `;
-    const result = await _query(query, [postId]);
-    return result.rows[0] ? new Post(result.rows[0]) : null;
+      // Update post likes count
+      const updatePostQuery = `
+        UPDATE posts
+        SET likes_count = GREATEST(likes_count - 1, 0), updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+      `;
+      const result = await client.query(updatePostQuery, [postId]);
+      return result.rows[0] ? new Post(result.rows[0]) : null;
+    });
   }
 }
 

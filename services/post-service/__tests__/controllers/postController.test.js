@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { mockQuery, mockKafkaProducer } from '../setup.js';
+import { mockQuery, mockKafkaProducer, mockWithTransaction } from '../setup.js';
 
 // Import Post model
 const Post = (await import('../../src/models/Post.js')).default;
@@ -292,16 +292,20 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // Check existing like - none found
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'like-id', post_id: postId, user_id: userId }] }); // Save like
-      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // Update post likes_count
+      // Mock transaction behavior
+      mockWithTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] }) // Check existing like - none found
+            .mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }) // Insert like
+            .mockResolvedValueOnce({ rows: [updatedPost] }) // Update post likes_count
+        };
+        return await callback(mockClient);
+      });
 
       await postController.likePost(req, res);
 
-      expect(mockQuery).toHaveBeenCalledWith(
-        "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2",
-        [postId, userId]
-      );
+      expect(mockWithTransaction).toHaveBeenCalled();
       expect(mockKafkaProducer.publishPostLiked).toHaveBeenCalledWith(
         expect.any(Post),
         userId
@@ -320,7 +324,14 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like', post_id: postId, user_id: userId }] }); // Existing like found
+      // Mock transaction that throws error when like already exists
+      mockWithTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Existing like found
+        };
+        return await callback(mockClient);
+      });
 
       await postController.likePost(req, res);
 
@@ -335,9 +346,16 @@ describe('PostController', () => {
       req.params.postId = '123e4567-e89b-12d3-a456-426614174000';
       req.body = { user_id: '550e8400-e29b-41d4-a716-446655440000' };
       
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // Check existing like - none found
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }); // Save like
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // Update post - no post found
+      // Mock transaction behavior where post is not found
+      mockWithTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] }) // Check existing like - none found
+            .mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }) // Insert like
+            .mockResolvedValueOnce({ rows: [] }) // Update post - no post found
+        };
+        return await callback(mockClient);
+      });
 
       await postController.likePost(req, res);
 
@@ -358,16 +376,20 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like', post_id: postId, user_id: userId }] }); // Existing like found
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }); // Delete like
-      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // Update post likes_count
+      // Mock transaction behavior
+      mockWithTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Existing like found
+            .mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }) // Delete like
+            .mockResolvedValueOnce({ rows: [updatedPost] }) // Update post likes_count
+        };
+        return await callback(mockClient);
+      });
 
       await postController.unlikePost(req, res);
 
-      expect(mockQuery).toHaveBeenCalledWith(
-        "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2",
-        [postId, userId]
-      );
+      expect(mockWithTransaction).toHaveBeenCalled();
       expect(mockKafkaProducer.publishPostUnliked).toHaveBeenCalledWith(
         expect.any(Post),
         userId
@@ -386,7 +408,14 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // No existing like found
+      // Mock transaction that throws error when no like found
+      mockWithTransaction.mockImplementation(async (callback) => {
+        const mockClient = {
+          query: jest.fn()
+            .mockResolvedValueOnce({ rows: [] }) // No existing like found
+        };
+        return await callback(mockClient);
+      });
 
       await postController.unlikePost(req, res);
 

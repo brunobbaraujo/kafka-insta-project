@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { mockQuery } from '../setup.js';
+import { mockQuery, mockWithTransaction } from '../setup.js';
 
 const Post = (await import('../../src/models/Post.js')).default;
 

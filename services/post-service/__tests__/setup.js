@@ -2,6 +2,7 @@ import { jest } from '@jest/globals';
 
 // Mock database connection
 export const mockQuery = jest.fn();
+export const mockWithTransaction = jest.fn();
 
 // Mock Kafka producer
 export const mockKafkaProducer = {
@@ -14,7 +15,8 @@ export const mockKafkaProducer = {
 
 // Mock database module
 jest.unstable_mockModule('../src/config/database.js', () => ({
-  query: mockQuery
+  query: mockQuery,
+  withTransaction: mockWithTransaction
 }));
 
 // Mock kafka module  

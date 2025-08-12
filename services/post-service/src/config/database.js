@@ -1,0 +1,42 @@
+import { Pool } from "pg";
+
+const pool = new Pool({
+  host: process.env.DB_HOST || "localhost",
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || "instagram_posts",
+  user: process.env.DB_USER || "postgres",
+  password: process.env.DB_PASSWORD || "postgres",
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+// Test connection
+pool.on("connect", () => {
+  console.log("Connected to PostgreSQL database");
+});
+
+pool.on("error", (err) => {
+  console.error("PostgreSQL connection error:", err);
+  process.exit(1);
+});
+
+export const query = (text, params) => pool.query(text, params);
+
+export const withTransaction = async (callback) => {
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+};
+
+export default pool;

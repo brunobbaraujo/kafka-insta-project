@@ -292,13 +292,15 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // incrementLikes
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // Check existing like - none found
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'like-id', post_id: postId, user_id: userId }] }); // Save like
+      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // Update post likes_count
 
       await postController.likePost(req, res);
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('likes_count = likes_count + 1'),
-        [postId]
+        "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2",
+        [postId, userId]
       );
       expect(mockKafkaProducer.publishPostLiked).toHaveBeenCalledWith(
         expect.any(Post),
@@ -311,11 +313,31 @@ describe('PostController', () => {
       });
     });
 
+    it('should return 400 when user already liked the post', async () => {
+      const postId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '550e8400-e29b-41d4-a716-446655440000';
+
+      req.params.postId = postId;
+      req.body = { user_id: userId };
+      
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like', post_id: postId, user_id: userId }] }); // Existing like found
+
+      await postController.likePost(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'User has already liked this post'
+      });
+    });
+
     it('should return 404 when post not found for like', async () => {
       req.params.postId = '123e4567-e89b-12d3-a456-426614174000';
       req.body = { user_id: '550e8400-e29b-41d4-a716-446655440000' };
       
-      mockQuery.mockResolvedValueOnce({ rows: [] }); // incrementLikes returns nothing
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // Check existing like - none found
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'like-id' }] }); // Save like
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // Update post - no post found
 
       await postController.likePost(req, res);
 
@@ -336,13 +358,15 @@ describe('PostController', () => {
       req.params.postId = postId;
       req.body = { user_id: userId };
       
-      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // decrementLikes
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like', post_id: postId, user_id: userId }] }); // Existing like found
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'existing-like' }] }); // Delete like
+      mockQuery.mockResolvedValueOnce({ rows: [updatedPost] }); // Update post likes_count
 
       await postController.unlikePost(req, res);
 
       expect(mockQuery).toHaveBeenCalledWith(
-        expect.stringContaining('likes_count = GREATEST(likes_count - 1, 0)'),
-        [postId]
+        "SELECT * FROM post_likes WHERE post_id = $1 AND user_id = $2",
+        [postId, userId]
       );
       expect(mockKafkaProducer.publishPostUnliked).toHaveBeenCalledWith(
         expect.any(Post),
@@ -352,6 +376,24 @@ describe('PostController', () => {
         success: true,
         data: expect.any(Post),
         message: 'Post unliked successfully'
+      });
+    });
+
+    it('should return 400 when user has not liked the post', async () => {
+      const postId = '123e4567-e89b-12d3-a456-426614174000';
+      const userId = '550e8400-e29b-41d4-a716-446655440000';
+
+      req.params.postId = postId;
+      req.body = { user_id: userId };
+      
+      mockQuery.mockResolvedValueOnce({ rows: [] }); // No existing like found
+
+      await postController.unlikePost(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        error: 'User has not liked this post'
       });
     });
   });

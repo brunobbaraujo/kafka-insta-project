@@ -1,5 +1,6 @@
 import { query as _query } from "../config/database.js";
 import { v4 as uuidv4 } from "uuid";
+import PostLike from "./PostLike.js";
 
 class Post {
   constructor(data) {
@@ -129,6 +130,45 @@ class Post {
   }
 
   static async decrementLikes(postId) {
+    const query = `
+      UPDATE posts
+      SET likes_count = GREATEST(likes_count - 1, 0), updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+    const result = await _query(query, [postId]);
+    return result.rows[0] ? new Post(result.rows[0]) : null;
+  }
+
+  static async addLike(postId, userId) {
+    const existingLike = await PostLike.findByPostAndUser(postId, userId);
+    
+    if (existingLike) {
+      throw new Error("User has already liked this post");
+    }
+
+    const like = new PostLike({ post_id: postId, user_id: userId });
+    await like.save();
+
+    const query = `
+      UPDATE posts
+      SET likes_count = likes_count + 1, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
+    const result = await _query(query, [postId]);
+    return result.rows[0] ? new Post(result.rows[0]) : null;
+  }
+
+  static async removeLike(postId, userId) {
+    const existingLike = await PostLike.findByPostAndUser(postId, userId);
+    
+    if (!existingLike) {
+      throw new Error("User has not liked this post");
+    }
+
+    await PostLike.deleteByPostAndUser(postId, userId);
+
     const query = `
       UPDATE posts
       SET likes_count = GREATEST(likes_count - 1, 0), updated_at = NOW()

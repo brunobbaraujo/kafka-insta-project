@@ -173,7 +173,7 @@ class PostController {
       const { postId } = req.params;
       const { user_id } = req.body;
 
-      const updatedPost = await Post.incrementLikes(postId);
+      const updatedPost = await Post.addLike(postId, user_id);
       if (!updatedPost) {
         return res.status(404).json({
           success: false,
@@ -191,6 +191,14 @@ class PostController {
       });
     } catch (error) {
       console.error("Error liking post:", error);
+      
+      if (error.message === "User has already liked this post") {
+        return res.status(400).json({
+          success: false,
+          error: "User has already liked this post",
+        });
+      }
+      
       res.status(500).json({
         success: false,
         error: "Internal server error",
@@ -203,7 +211,7 @@ class PostController {
       const { postId } = req.params;
       const { user_id } = req.body;
 
-      const updatedPost = await Post.decrementLikes(postId);
+      const updatedPost = await Post.removeLike(postId, user_id);
       if (!updatedPost) {
         return res.status(404).json({
           success: false,
@@ -221,6 +229,14 @@ class PostController {
       });
     } catch (error) {
       console.error("Error unliking post:", error);
+      
+      if (error.message === "User has not liked this post") {
+        return res.status(400).json({
+          success: false,
+          error: "User has not liked this post",
+        });
+      }
+      
       res.status(500).json({
         success: false,
         error: "Internal server error",

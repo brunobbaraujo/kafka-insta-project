@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import { createTable } from "./models/Post.js";
+import { createTable as createPostLikeTable } from "./models/PostLike.js";
 import kafkaProducer from "./config/kafka.js";
 import postRoutes from "./routes/posts.js";
 
@@ -52,6 +53,7 @@ async function initialize() {
     // Create database tables
     console.log("Creating database tables...");
     await createTable();
+    await createPostLikeTable();
     console.log("Database tables created successfully");
 
     // Connect to Kafka and create topics
